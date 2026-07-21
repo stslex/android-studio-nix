@@ -1,6 +1,8 @@
-name: update
+name: build & update
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
@@ -13,8 +15,14 @@ on:
 permissions:
   contents: write
 
+# Serialize runs: a dispatch during cron, or a push mid-update, must not cancel
+# an in-flight build or race two git pushes.
+concurrency:
+  group: android-studio-ci
+  cancel-in-progress: false
+
 jobs:
-  update:
+  build-and-update:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,11 +32,14 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
+      # --- update-only steps: skipped on push ---
       - name: Bump sources.json
+        if: github.event_name != 'push'
         run: ./scripts/update.sh "${{ github.event.inputs.version }}"
 
-      - name: Detect change
+      - name: Detect sources change
         id: diff
+        if: github.event_name != 'push'
         run: |
           if git diff --quiet -- pkgs/android-studio/sources.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -37,17 +48,21 @@ jobs:
           fi
 
       - name: Refresh nixpkgs (wrapper/runtime deps)
-        if: steps.diff.outputs.changed == 'true'
+        if: github.event_name != 'push' && steps.diff.outputs.changed == 'true'
         run: nix flake update nixpkgs
 
-      - name: Verify build
-        if: steps.diff.outputs.changed == 'true'
+      # --- build gate ---
+      # push  -> always (repo changed, prove it builds)
+      # update -> only when the pin actually changed
+      # success() is required: a custom `if:` replaces the default success() gate,
+      # else the build would run after a failed flake update. Skipped steps are not failures.
+      - name: Build
+        if: success() && (github.event_name == 'push' || steps.diff.outputs.changed == 'true')
         run: nix build .#android-studio --print-build-logs
 
-      # success() && ... is required: a custom `if:` replaces the default success()
-      # gate, so without it a failed build would still commit.
+      # --- commit only in update-mode; never on push (would loop) ---
       - name: Commit and push
-        if: success() && steps.diff.outputs.changed == 'true'
+        if: success() && github.event_name != 'push' && steps.diff.outputs.changed == 'true'
         run: |
           version="$(jq -r .version pkgs/android-studio/sources.json)"
           git config user.name  "github-actions[bot]"
