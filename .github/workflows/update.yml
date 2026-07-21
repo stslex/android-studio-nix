@@ -1,0 +1,57 @@
+name: update
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pin to a specific version (e.g. 2026.1.2.10). Empty = latest stable."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Bump sources.json
+        run: ./scripts/update.sh "${{ github.event.inputs.version }}"
+
+      - name: Detect change
+        id: diff
+        run: |
+          if git diff --quiet -- pkgs/android-studio/sources.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refresh nixpkgs (wrapper/runtime deps)
+        if: steps.diff.outputs.changed == 'true'
+        run: nix flake update nixpkgs
+
+      - name: Verify build
+        if: steps.diff.outputs.changed == 'true'
+        run: nix build .#android-studio --print-build-logs
+
+      # success() && ... is required: a custom `if:` replaces the default success()
+      # gate, so without it a failed build would still commit.
+      - name: Commit and push
+        if: success() && steps.diff.outputs.changed == 'true'
+        run: |
+          version="$(jq -r .version pkgs/android-studio/sources.json)"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pkgs/android-studio/sources.json flake.lock
+          git commit -m "android-studio: ${version}"
+          git push
