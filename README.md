@@ -3,7 +3,7 @@
 A Nix flake packaging [Android Studio](https://developer.android.com/studio) (stable channel), auto-updated daily.
 
 It reuses nixpkgs' own Android Studio FHS wrapper
-(`pkgs/applications/editors/android-studio/common.nix`) and only swaps in the
+(`pkgs/applications/editors/android-studio/linux.nix`) and only swaps in the
 `{ version, url, sha256Hash }` pinned in `pkgs/android-studio/sources.json`, so
 you get upstream's exact runtime environment on the latest stable release.
 
@@ -89,7 +89,7 @@ gh workflow run update.yml -f version=2026.1.2.10  # pin
 
 ## Passthru
 
-The package exposes the passthru attributes from nixpkgs' `common.nix` for
+The package exposes the passthru attributes from nixpkgs' Linux wrapper for
 further wrapping:
 
 - `.unwrapped` — the raw, unwrapped Android Studio derivation
@@ -105,5 +105,5 @@ Android Studio itself is not MIT-licensed: it is distributed under the
 and includes proprietary components. Installing it via this flake is subject to
 that license (hence `allowUnfree`).
 
-Thanks to the nixpkgs Android maintainers, whose `common.nix` FHS wrapper this
+Thanks to the nixpkgs Android maintainers, whose Linux FHS wrapper this
 flake reuses wholesale.
