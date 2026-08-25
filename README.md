@@ -79,6 +79,10 @@ A GitHub Actions workflow (`.github/workflows/update.yml`) runs daily at
 3. builds `.#android-studio` to verify, then
 4. commits and pushes.
 
+Every push to `main` also refreshes `nixpkgs` in the CI checkout before the
+build. That catches wrapper API changes even when the committed lock is older;
+the transient lock change is not committed on push, avoiding a workflow loop.
+
 This requires **Settings → Actions → General → Workflow permissions → Read and
 write**. Trigger it manually with:
 

@@ -47,8 +47,11 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # A push must test against the current nixos-unstable wrapper, not only
+      # the revision already pinned by the branch. The resulting lock change is
+      # intentionally not committed on push, avoiding a CI commit loop.
       - name: Refresh nixpkgs (wrapper/runtime deps)
-        if: github.event_name != 'push' && steps.diff.outputs.changed == 'true'
+        if: github.event_name == 'push' || steps.diff.outputs.changed == 'true'
         run: nix flake update nixpkgs
 
       # --- build gate ---
